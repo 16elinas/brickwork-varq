@@ -5,6 +5,8 @@ import sys
 # plot avg entropy as a function of iteration
 avg_ents = []
 middle_ents = []
+before_mid_ents = []
+after_mid_ents = []
 
 filename = sys.argv[1]
 
@@ -26,8 +28,13 @@ with open(filename) as f:
         if len(ents) > 0:
             avg_ents.append(np.average(ents))
             middle_ents.append(ents[n // 2])
+            before_mid_ents.append(ents[(n // 2) - 1])
+            after_mid_ents.append(ents[(n // 2) + 1])
+all_ents = [[middle_ents[i], after_mid_ents[i]] for i in range(len(middle_ents))]
 
 plt.plot(middle_ents)
+plt.plot(after_mid_ents)
+plt.plot(np.average(all_ents, axis=1))
 plt.xlabel("iteration")
 plt.ylabel("half-chain entanglement")
 plt.title(str(n) + "x" + str(m) + " q=" + str(q))

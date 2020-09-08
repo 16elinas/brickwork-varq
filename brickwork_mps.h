@@ -43,10 +43,11 @@ class BrickMPS {
     entanglement_data get_entanglement();
     ITensor apply_unitary(ITensor T1, ITensor T2, std::map<int, std::map<int, std::complex<double>>> u);
 
-    BrickMPS& measure(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds);
-    BrickMPS& truncate(int maxdim);
-    BrickMPS& truncate(float maxerror);
-    BrickMPS& iterate(int iter, UnitaryData udata);
+    BrickMPS& measure(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds, int orth_type);
+    BrickMPS& measure2(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds, int orth_type);
+    BrickMPS& truncate_maxdim(int maxdim);
+    BrickMPS& truncate_err(float maxerror);
+    BrickMPS& iterate(int iter, UnitaryData udata, int circuit_type, int orth_type);
 };
 
 #endif
