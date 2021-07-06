@@ -26,6 +26,8 @@ struct entanglement_data {
   std::vector<double> entropies;
 } ;
 
+
+
 class BrickMPS {
   std::map<int, ITensor> qudits;
   std::string name;
@@ -42,11 +44,14 @@ class BrickMPS {
     std::vector<double> get_singvals(int b);
     entanglement_data get_entanglement();
     ITensor apply_unitary(ITensor T1, ITensor T2, std::map<int, std::map<int, std::complex<double>>> u);
+    entanglement_data get_entanglement(MPS& mps);
+    
 
     BrickMPS& measure(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds, int orth_type);
     BrickMPS& measure2(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds, int orth_type);
-    BrickMPS& truncate_maxdim(int maxdim);
-    BrickMPS& truncate_err(float maxerror);
+    BrickMPS& truncate_maxdim(int maxdim, std::ofstream& ofile);
+    BrickMPS& truncate_err(float maxerror, std::ofstream& ofile);
+    BrickMPS& truncate(float maxerror, int maxdim, int method, std::ofstream& ofile);
     BrickMPS& iterate(int iter, UnitaryData udata, int circuit_type, int orth_type);
 };
 

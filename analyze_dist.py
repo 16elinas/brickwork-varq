@@ -1,4 +1,3 @@
-# get sum(p_z Tr(rho_z^2)) / sum(p_z)
 import matplotlib.pyplot as plt
 import numpy as np
 import sys

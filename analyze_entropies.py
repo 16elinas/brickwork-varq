@@ -33,7 +33,7 @@ with open(filename) as f:
 all_ents = [[middle_ents[i], after_mid_ents[i]] for i in range(len(middle_ents))]
 
 plt.plot(middle_ents)
-plt.plot(after_mid_ents)
+# plt.plot(after_mid_ents)
 plt.plot(np.average(all_ents, axis=1))
 plt.xlabel("iteration")
 plt.ylabel("half-chain entanglement")

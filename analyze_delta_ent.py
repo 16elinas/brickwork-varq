@@ -2,19 +2,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
-# plot avg entropy as a function of iteration
+# Plot the change in entropy as a function of iteration
 avg_ents = []
 avg_ents_before = []
+all_ents = []
 middle_ents = []
 middle_ents_before = []
+all_ents_before = []
 
-qs = [3,4,5,6,7]
-d = 20
+es = [2,3,4,5,6,7]
+q = 7
 l = 18
 
 
-for q in qs:
-    filename = 'o18x10_q'+str(q)+'_d'+str(d)+'.txt'
+for e in es:
+    # print(q)
+    filename = 'o18x10_q'+str(q)+'_e-'+str(e)+'.txt'
     with open(filename) as f:
         middle_ents = []
         middle_ents_before = []
@@ -25,9 +28,8 @@ for q in qs:
         m = int(f.readline()[4:])
         q = int(f.readline()[4:])
         for i in range(m):
-            while 'iteration' not in line and line != '':
+            while 'entropies' not in line and line != '':
                 line = f.readline()
-            f.readline() # this says "entropies"
             line = f.readline() # this is the data
             ents = line.split(',')[:-1]
             ents = [float(e) for e in ents]
@@ -44,12 +46,16 @@ for q in qs:
             if len(ents) > 0:
                 middle_ents_before.append(ents[n // 2])
 
-        avg_ents.append(np.average(middle_ents[2:]))
-        avg_ents_before.append(np.average(middle_ents_before[2:]))
+    avg_ents.append(np.nanmean(middle_ents[2:]))
+
+    avg_ents_before.append(np.nanmean(middle_ents_before[2:]))
 
 delta_ents = [avg_ents_before[i] - avg_ents[i] for i in range(len(avg_ents))]
-plt.plot(qs, delta_ents)
-plt.xlabel("q")
-plt.ylabel("entanglement lost by truncating ()")
+# for i in range(len(es)):
+    # plt.plot(all_ents_before[i], label="1e-" + str(es[i]))
+plt.plot(es, delta_ents)
+plt.xlabel("-log10(err)")
+plt.ylabel("avg entanglement lost")
 # ax[0].title(str(n) + "x" + str(m) + " q=" + str(q))
+# plt.legend()
 plt.show()

@@ -1,7 +1,7 @@
 #include "brickwork_mps.h"
 
 
-// Create a new chain of qudits
+// Constructor for the BrickMPS class
 // len is the length of the MPS, the number of qudits on the chain
 // q is the local dimension of the qudit
 // prod is whether we want a product state or not
@@ -20,7 +20,6 @@ BrickMPS::BrickMPS(std::string nam, int len, int qdim, bool prod) {
     for (int j = 1; j <= q; j++) {
       qudits[1].set(i(j), right(j), 1 / sqrt(q));
     }
-    // qudits[1] = qudits[1] / norm(qudits[1]);
 
     // make the rest of the tensors be some entangled state
     for (int ind = 2; ind <= len - 1; ind++) {
@@ -56,7 +55,6 @@ BrickMPS::BrickMPS(std::string nam, int len, int qdim, bool prod) {
         }
       }
     }
-    // qudits[len] = qudits[len] / norm(qudits[len]);
 
   } else {
     // for a product state
@@ -86,50 +84,29 @@ MPS BrickMPS::to_mps() {
 }
 
 
-// output tht entanglement data of the current state of the circuit
+// output the entanglement data of the current state of the circuit
 // in the form of entanglement_data which has a list of the
 // total von Neumann entropies across the bonds and also
 // the lists of all the singular values
-// the lists are ZERO INDEXED
+// the lists are zero indexed
+// assumes the MPS is already orthogonalized and normalized
 entanglement_data BrickMPS::get_entanglement() {
   int N = this->get_len();
   entanglement_data out;
   std::vector<std::vector<double>> svals;
   std::vector<double> entropies;
 
-  // auto psi = this->to_mps();
+  auto psi = this->to_mps();
+  // psi.orthogonalize();
+  // psi.normalize();
+  for (int i = 1; i <= this->get_len(); i++) {
+    qudits[i] = psi(i);
+  }
 
   // variables for each iteration
   double ent;
   std::vector<double> bond_svals;
 
-  // for (int b = 1; b < this->get_len(); b++) {
-  //   ent = 0;
-  //   bond_svals.clear();
-  //
-  //   // put the MPS in the right position
-  //   psi.position(b);
-  //
-  //   //SVD this wavefunction to get the spectrum
-  //   //of density-matrix eigenvalues
-  //   auto l = leftLinkIndex(psi,b);
-  //   auto s = siteIndex(psi,b);
-  //   auto [U,S,V] = svd(psi(b),{l,s});
-  //   auto u = commonIndex(U,S);
-  //
-  //   //Apply von Neumann formula
-  //   //to the squares of the singular values
-  //   println("position: " + std::to_string(b));
-  //   for(auto n : range1(dim(u))) {
-  //     auto Sn = elt(S,n,n);
-  //     auto val = sqr(Sn);
-  //     bond_svals.push_back(val);
-  //     println("singular value: " + std::to_string(val));
-  //     if(val > 1E-12) ent += -val*log(val);
-  //   }
-  //   svals.push_back(bond_svals);
-  //   entropies.push_back(ent);
-  // }
 
   std::map<int, ITensor> lambdas;
 
@@ -163,7 +140,57 @@ entanglement_data BrickMPS::get_entanglement() {
   return out;
 }
 
-// apply a unitary between two ITensors and return the product
+
+// output the entanglement data of the current state of the circuit
+// in the form of entanglement_data which has a list of the
+// total von Neumann entropies across the bonds and also
+// the lists of all the singular values
+// the lists are zero indexed
+// assumes the MPS is already orthogonalized and normalized
+entanglement_data BrickMPS::get_entanglement(MPS& mps) {
+  int N = length(mps);
+  entanglement_data out;
+  std::vector<std::vector<double>> svals;
+  std::vector<double> entropies;
+
+  // variables for each iteration
+  double ent;
+  std::vector<double> bond_svals;
+
+  std::map<int, ITensor> lambdas;
+
+  ITensor conjd = conj(prime(mps(1), "Link"));
+
+  lambdas[1] = mps(1) * conjd;
+
+  for (int m = 2; m <= N; m++) {
+    conjd = conj(prime(mps(m), "Link"));
+    lambdas[m] = lambdas[m - 1] * conjd * mps(m);
+  }
+
+  for (int m = 1; m <= N - 1; m++) {
+    int D = dim(lambdas[m].inds().index(1));
+    ent = 0;
+    bond_svals.clear();
+    // println("position: " + std::to_string(m));
+    for (int p = 1; p <= D; p++) {
+      double val = real(lambdas[m].eltC(p, p));
+      bond_svals.push_back(val);
+      // println("singular value: " + std::to_string(val));
+      ent += -val * log2(val);
+    }
+    svals.push_back(bond_svals);
+    entropies.push_back(ent);
+  }
+
+  out.svals = svals;
+  out.entropies = entropies;
+
+  return out;
+}
+
+
+// apply a unitary gate between two ITensors and return the product
 // assumes that T1 and T2 only have 1 physical (Site) index at a time
 // u is a q^2 by q^2 unitary matrix
 ITensor BrickMPS::apply_unitary(ITensor T1, ITensor T2, std::map<int, std::map<int, std::complex<double>>> u) {
@@ -199,117 +226,58 @@ ITensor BrickMPS::apply_unitary(ITensor T1, ITensor T2, std::map<int, std::map<i
       }
     }
   }
-  // PrintData(U);
-
-  // println("norm of U=" + std::to_string(norm(U)));
-  // println("norm of T1=" + std::to_string(norm(T1)));
-  // println("norm of T2=" + std::to_string(norm(T2)));
 
 
    auto out = T1 * T2;
-   // println("norm of out=" + std::to_string(norm(out)));
    out *= U;
    out.noPrime();
-
-   // PrintData(out);
-
    return out;
 }
 
 
-// measure the indices to be measured and orthogonalize
+// measure the indices which are to be measured and orthogonalize the MPS
 // inds_to_meas: a 1-indexed array of the indices to be measured
 // new_phys_inds: the indices to be left alone
-// for each index:
-// 1. pick a measurement result, based on magnitude of projected qudit
-// 2. project the qudit onto that result, for the index to be measured and normalize
-// 3. contract into the next qudit to prepare
+// orth_type: different types of orthogonalization before the measurement
+//            1 - do nothing
+//            2 - use ITensor's "position" method on the first position
+//            3 - use ITensor's "orthogonalize" method
+// what this method does for each index:
+//   1. pick a measurement result, based on magnitude of projected qudit
+//   2. project the qudit onto that result, for the index to be measured and normalize
+//   3. contract into the next qudit to prepare
 BrickMPS& BrickMPS::measure(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds, int orth_type) {
   // put it in canonical form
-  auto copyMPS = this->to_mps();
   // orhogonalization: 1 is none, 2 is position, 3 is orthogonalize
   if (orth_type == 2) {
+    auto copyMPS = this->to_mps();
     println("positioning");
     copyMPS.position(1);
+    for (int i = 1; i <= this->get_len(); i++) {
+      qudits[i] = copyMPS(i);
+    }
   } else if (orth_type == 3) {
+    auto copyMPS = this->to_mps();
     println("orthogonalizing");
     copyMPS.orthogonalize();
-  }
-  for (int i = 1; i <= this->get_len(); i++) {
-    qudits[i] = copyMPS(i);
+    for (int i = 1; i <= this->get_len(); i++) {
+      qudits[i] = copyMPS(i);
+    }
   }
 
-  // make the projectors in preparation
-  // this is an Nxq 2D array, first index gives the position along the MPS
-  // second index is which measurement result to project onto
-  std::map<int, std::vector<ITensor>> projs;
-  // std::vector<Index> comb_prime_inds;
-  std::vector<ITensor> p_combiners;
-  std::vector<ITensor> combiners;
+  // projectors for each position handled separately
+  std::vector<ITensor> projs;
+
   // record the outcome string
   string z;
   int N = this->get_len();
   println("measuring");
 
-  // make an MPS where the physical indices are combined, into one of dimension q^2
+  // make an MPS where the physical indices are combined, into ones of dimension q^2
   // this is for ease of operations and gauging
   auto sites = SiteSet(N, q*q);
   auto combinedMPS = MPS(sites);
 
-  for (int pos = 1; pos <= N; pos++) {
-    // println("pos =" + std::to_string(pos));
-    auto n = new_phys_inds[pos];
-    auto nn = prime(n);
-    auto m = inds_to_meas[pos];
-    auto mm = prime(m);
-
-    auto [C, c] = combiner({n, m}, {"Tags", "Site,i="+std::to_string(pos)});
-    combiners.push_back(C);
-    // c.addTags("Site");
-    auto [CC, cc] = combiner({nn, mm}, {"Tags", "prout,Site,i="+std::to_string(pos)});
-    p_combiners.push_back(CC);
-    // comb_prime_inds.push_back(cc);
-
-    auto combinedSite = qudits[pos] * C;
-    // println("qudits[pos]: ");
-    // PrintData(qudits[pos]);
-    // println("combined site");
-    // PrintData(combinedSite);
-    combinedMPS.set(pos, combinedSite);
-
-    // leave the new physical index alone
-    auto identity = ITensor(n, nn);
-    for (int j = 1; j <= q; j++) {
-      identity.set(n=j, nn=j, 1);
-    }
-    // make the projector onto each measurement result
-    for (int i = 0; i < q; i++) {
-      // println("q = " +std::to_string(q));
-      auto proj =  ITensor(m, mm);
-      // set the right index to one to project onto the result
-      // the +1s are because ITensors are 1-indexed
-      proj.set(m(i + 1), mm(i + 1), 1);
-      auto total_proj = proj * identity;
-      total_proj = C * total_proj * CC;
-      projs[pos].push_back(total_proj);
-    }
-  }
-
-  // for (int i = 1; i <= N; i++) {
-  //   PrintData(combinedMPS(i));
-  //   // println("norm of combinedMPS(" + std::to_string(i) + "): " + std::to_string(norm(combinedMPS(i))));
-  // }
-  // combinedMPS.orthogonalize();
-  // combinedMPS.normalize();
-  // combinedMPS.position(1);
-  // for (int i = 1; i <= N; i++) {
-  //   PrintData(combinedMPS(i));
-  //   // println("norm of combinedMPS(" + std::to_string(i) + "): " + std::to_string(norm(combinedMPS(i))));
-  // }
-
-  // for (auto& ind : linkInds(combinedMPS)) {
-  //   println(ind);
-  // }
 
   // get the probability of each measurement outcome
 
@@ -320,41 +288,59 @@ BrickMPS& BrickMPS::measure(std::map<int, Index> inds_to_meas, std::map<int, Ind
   float prob;
   float prev_prob = 0;
 
-  // PrintData(combinedMPS(3));
-  // PrintData(projs[1][0]);
-  // PrintData(combinedMPS(1) * projs[1][0]);
+  // create the projector
+  auto n = new_phys_inds[1];
+  auto nn = prime(n);
+  auto m = inds_to_meas[1];
+  auto mm = prime(m);
+
+  auto [C, c] = combiner({n, m}, {"Tags", "Site,i="+std::to_string(1)});
+  auto [CC, cc] = combiner({nn, mm}, {"Tags", "prout,Site,i="+std::to_string(1)});
+
+  auto combinedSite = qudits[1] * C;
+  combinedMPS.set(1, combinedSite);
+
+  // leave the new physical index alone
+  auto identity = ITensor(n, nn);
+  for (int j = 1; j <= q; j++) {
+    identity.set(n=j, nn=j, 1);
+  }
+
+  // make the projector onto each measurement result
+  for (int i = 0; i < q; i++) {
+    auto proj =  ITensor(m, mm);
+    // set the right index to one to project onto the result
+    // the +1s are because ITensors are 1-indexed
+    proj.set(m(i + 1), mm(i + 1), 1);
+    auto total_proj = proj * identity;
+    total_proj = C * total_proj * CC;
+    projs.push_back(total_proj);
+  }
+
+
   std::cout << "pos = 1 ";
   for (int i = 0; i < q; i++) {
-    prob = std::pow(norm(combinedMPS(1) * projs[1][i]), 2);
-    // println("right after temporarily projecting the first qudit: ");
-    // PrintData(combinedMPS(1) * projs[1][i]);
-    // PrintData(projs[1][i]);
-    // PrintData(combinedMPS(1) * projs[1][i]);
-    // println("prob of " + std::to_string(i) + ": " + std::to_string(prob));
+    prob = std::pow(norm(combinedMPS(1) * projs[i]), 2);
     probs.push_back(prob + prev_prob);
     prev_prob += prob;
   }
 
-  // pick a measurement result
-
+  // pick a measurement result using a random_device
   std::random_device rand_dev;
   std::mt19937 generator(rand_dev());
   std::uniform_real_distribution<double> sample(0.0, 1.0);
 
   double result = sample(generator);
-  // TEST WITH ALL ZEROS
-  // double result = 0;
-  // println("result: " + std::to_string(result));
-
   // store the contracted LHS tensors in contracted
   ITensor contracted;
   // temporary storage for projected tensor
   ITensor projd;
   for (int i = 0; i < q; i++) {
     // pick i=1
-    if (i == 1) {
+    if (result <= probs[i]) {
       z = z.append(std::to_string(i));
-      projd = combinedMPS(1) * projs[1][i];
+
+      projd = combinedMPS(1) * projs[i];
       // PrintData(projs[1][i]);
 
       // create the projector for the "official" mps
@@ -380,69 +366,94 @@ BrickMPS& BrickMPS::measure(std::map<int, Index> inds_to_meas, std::map<int, Ind
       // PrintData(qudits[1]);
       break;
     }
+    if (i == (q - 1)) {
+      projd = combinedMPS(1) * projs[i];
+      // PrintData(projs[1][i]);
+
+      // create the projector for the "official" mps
+      auto projop = ITensor(inds_to_meas[1]);
+      projop.set(inds_to_meas[1](i + 1), 1);
+      qudits[1] = (qudits[1] * projop);
+
+      // normalize by the square root of the measurement probability
+      // the norm doesn't have to be 1 and probably shouldn't be
+        // println("prob: " + std::to_string(probs[i]));
+      projd = projd / sqrt(probs[i]);
+      qudits[1] = qudits[1] / sqrt(probs[i]);
+      combinedMPS.set(1, projd);
+    }
   }
 
   // contract with itself and store
   // to store the conjugated tensor
-  // projd = combinedMPS.ref(1);
   ITensor conjd = conj(prime(projd, "Link"));
 
-  // println("projd inds: ");
-  // for(auto& ind : projd.inds()) {
-  //   println(ind);
-  // }
-  // println("conjd inds: ");
-  // for(auto& ind : conjd.inds()) {
-  //   println(ind);
-  // }
-
   contracted = projd * conjd;
-  // PrintData(combinedMPS(1));
-  // PrintData(contracted);
-
   ITensor temp_projd;
   ITensor temp_conjd;
 
-  // POTENTIAL ISSUE: not setting the combinedMPS to the other one
+
+  // now do everything from above for the rest of the positions
   for (int pos = 2; pos <= N; pos++){
-    std::cout <<  " - " << std::to_string(pos) << std::endl;
-    // println("pos: " + std::to_string(pos));
+    // create the projectors
+    projs.clear();
+    auto n = new_phys_inds[pos];
+    auto nn = prime(n);
+    auto m = inds_to_meas[pos];
+    auto mm = prime(m);
+
+    auto [C, c] = combiner({n, m}, {"Tags", "Site,i="+std::to_string(pos)});
+    // combiners.push_back(C);
+    // c.addTags("Site");
+    auto [CC, cc] = combiner({nn, mm}, {"Tags", "prout,Site,i="+std::to_string(pos)});
+    // p_combiners.push_back(CC);
+    // comb_prime_inds.push_back(cc);
+
+    combinedSite = qudits[pos] * C;
+    combinedMPS.set(pos, combinedSite);
+
+    // leave the new physical index alone
+    auto identity = ITensor(n, nn);
+    for (int j = 1; j <= q; j++) {
+      identity.set(n=j, nn=j, 1);
+    }
+
+    // make the projector onto each measurement result
+    for (int i = 0; i < q; i++) {
+      auto proj =  ITensor(m, mm);
+      // set the right index to one to project onto the result
+      // the +1s are because ITensors are 1-indexed
+      proj.set(m(i + 1), mm(i + 1), 1);
+      auto total_proj = proj * identity;
+      total_proj = C * total_proj * CC;
+      projs.push_back(total_proj);
+    }
+
+    std::cout <<  " - " << std::to_string(pos);
     probs.clear();
-    // combinedMPS.position(pos);
     prev_prob = 0;
     for (int i = 0; i < q; i++) {
-      temp_projd = combinedMPS(pos) * projs[pos][i];
-      // println("norm of temp_projd = " + std::to_string(norm(temp_projd)));
+      temp_projd = combinedMPS(pos) * projs[i];
       temp_conjd = dag(temp_projd);
       for (auto& ind : temp_conjd.inds()) {
        if (hasIndex(contracted, ind)) {
          temp_conjd.prime(ind);
        }
      }
-     // println("Right after temporarily projecting: ");
-    // PrintData(temp_projd);
-    // PrintData(temp_conjd);
 
-      auto prob_scalar = temp_projd * (contracted * temp_conjd);
+      auto temp = temp_projd * temp_conjd;
+      auto prob_scalar = temp * contracted;
       prob = norm(prob_scalar);
-      if (pos == 11) {
-        // println("prob of " + std::to_string(i) + ": " + std::to_string(prob));
-      }
-      // println("prob of " + std::to_string(i) + ": " + std::to_string(prob));
-      // println("cumulative prob of " + std::to_string(i) + ": " + std::to_string(prev_prob + prob));
       probs.push_back(prob + prev_prob);
       prev_prob += prob;
     }
-    // UNCOMMENT WHEN YOU DON'T WANT ALL ZEROS
-    // result = sample(generator);
-    result = 0;
-    // println("last prob= " + std::to_string(probs[q-1]));
+    result = sample(generator);
 
     for (int i = 0; i < q; i++) {
-      if (i == 1) {
+      if (result <= probs[i]) {
         z = z.append(std::to_string(i));
 
-        projd = combinedMPS(pos) * projs[pos][i];
+        projd = combinedMPS(pos) * projs[i];
         float meas_prob;
         if (i == 0) {
           meas_prob = probs[i];
@@ -451,21 +462,34 @@ BrickMPS& BrickMPS::measure(std::map<int, Index> inds_to_meas, std::map<int, Ind
         }
         projd = projd / sqrt(meas_prob);
         combinedMPS.set(pos, projd);
-        // println("Right after projecting onto the result: ");
-        // PrintData(combinedMPS(pos));
-        // combinedMPS.normalize();
-        // PrintData(combinedMPS(pos));
 
         // create the projector for the "official" mps
         auto projop = ITensor(inds_to_meas[pos]);
         projop.set(inds_to_meas[pos](i + 1), 1);
 
         qudits[pos] = qudits[pos] * projop / sqrt(meas_prob);
-        // PrintData(qudits[pos]);
         goto project;
       }
       if (i == (q - 1)) {
         println("Hasn't picked a result!!!!!! ERROR!!!");
+        println("result = " + std::to_string(result));
+        println("last prob = " + std::to_string(probs.back()));
+        projd = combinedMPS(pos) * projs[i];
+        float meas_prob;
+        if (i == 0) {
+          meas_prob = probs[i];
+        } else {
+          meas_prob = probs[i] - probs[i - 1];
+        }
+        projd = projd / sqrt(meas_prob);
+        combinedMPS.set(pos, projd);
+
+        // create the projector for the "official" mps
+        auto projop = ITensor(inds_to_meas[pos]);
+        projop.set(inds_to_meas[pos](i + 1), 1);
+
+        qudits[pos] = qudits[pos] * projop / sqrt(meas_prob);
+        goto project;
       }
     }
 
@@ -474,11 +498,7 @@ BrickMPS& BrickMPS::measure(std::map<int, Index> inds_to_meas, std::map<int, Ind
     project: projd = combinedMPS(pos);
     conjd = dag(prime(projd, "Link"));
 
-    // PrintData(projd);
-    // PrintData(conjd);
     contracted = projd * (contracted * conjd);
-    // PrintData(contracted);
-    // println("contracted norm for pos=" + std::to_string(pos) + ": " + std::to_string(norm(contracted)));
   }
   std::cout << std::endl;
   // ofile << "z=" << z << std::endl;
@@ -491,6 +511,8 @@ BrickMPS& BrickMPS::measure(std::map<int, Index> inds_to_meas, std::map<int, Ind
 ///////////////////////////////////////////////////////////////////////////////
 
 // measure by contracting everything to the right instead of orthogonalizing
+// not much faster
+// slightly unclear if this works-- need to check
 BrickMPS& BrickMPS::measure2(std::map<int, Index> inds_to_meas, std::map<int, Index> new_phys_inds, int orth_type) {
   auto copyMPS = this->to_mps();
   for (int i = 1; i <= this->get_len(); i++) {
@@ -663,7 +685,7 @@ BrickMPS& BrickMPS::measure2(std::map<int, Index> inds_to_meas, std::map<int, In
 
   // POTENTIAL ISSUE: not setting the combinedMPS to the other one
   for (int pos = 2; pos <= N; pos++){
-    std::cout <<  " - " << std::to_string(pos) << std::endl;
+    std::cout <<  " - " << std::to_string(pos);
     // println("pos: " + std::to_string(pos));
     probs.clear();
     // combinedMPS.position(pos);
@@ -724,6 +746,8 @@ BrickMPS& BrickMPS::measure2(std::map<int, Index> inds_to_meas, std::map<int, In
       }
       if (i == (q - 1)) {
         println("Hasn't picked a result!!!!!! ERROR!!!");
+        println("result = " + std::to_string(result));
+        println("last prob = " + std::to_string(probs.back()));
       }
     }
 
@@ -744,40 +768,69 @@ BrickMPS& BrickMPS::measure2(std::map<int, Index> inds_to_meas, std::map<int, In
   return *this;
 }
 
-// Truncate the MPS to a maximum bond dimension
-BrickMPS& BrickMPS::truncate_maxdim(int maxdim) {
+// Truncate the MPS to a maximum bond dimension or error and output the entanglement data to a file
+// maxerror: the maximum error after truncation and orthogonalizing if using that method
+// maxdim: the maximum bond dimension in the MPS after orthogonalizing, if using that method
+// method: 1 for truncating based on error, anything else for bond dimension
+// ofile: the file which the entanglement data is written to
+BrickMPS& BrickMPS::truncate(float maxerror, int maxdim, int method, std::ofstream& ofile) {
   auto copyMPS = this->to_mps();
   auto otherCopyMPS = this->to_mps();
   println("Max link dim: before = " + std::to_string(maxLinkDim(copyMPS)));
-  copyMPS.orthogonalize({"MaxDim", maxdim});
-  otherCopyMPS.orthogonalize();
-  println("overlap: " + std::to_string(norm(innerC(copyMPS, otherCopyMPS))));
-  println("norm before normalizing = " + std::to_string(norm(copyMPS)));
+  if (method == 1) {
+    copyMPS.orthogonalize({"Cutoff", maxerror});
+  } else {
+    copyMPS.orthogonalize({"MaxDim", maxdim});
+  }
   copyMPS.normalize();
+
+  // get entanglement
+  entanglement_data ent = get_entanglement(copyMPS);
+
+  ofile << "entanglement entropies" << std::endl;
+
+  int n = this->get_len();
+  for (int i = 0; i < n - 1; i++) {
+    // std::cout << ent.entropies[i] << " - ";
+    ofile << ent.entropies[i] << ",";
+  }
+  // sort the singular values
+  std::sort (ent.svals[int(n/2)].begin(), ent.svals[int(n/2)].end());
+  ofile << std::endl << "singular values in the middle: " << std::endl;
+  for (int i = 0; i < ent.svals[n/2].size(); i++) {
+    ofile << ent.svals[int(n / 2)][i] << ",";
+    // ofile << ent.entropies[i] << ",";
+  }
+  ofile << std::endl;
+
+  // println("norm before normalizing = " + std::to_string(norm(copyMPS)));
   // println("Max link dim without truncation: " + std::to_string(maxLinkDim(otherCopyMPS)));
   println("Max link dim: after = " + std::to_string(maxLinkDim(copyMPS)));
-  // println("link dims after: ");
-  for (auto& ind : linkInds(copyMPS)) {
-    // println(ind);
-  }
-  // println("difference in norms after truncation: " + std::to_string(norm(this->to_mps() - copyMPS)));
-  for (int i = 1; i <= this->get_len(); i++) {
+  for (int i = 1; i <= n; i++) {
     qudits[i] = copyMPS(i);
   }
   return *this;
 }
 
-// Truncate the MPS to a maximum truncation error
-BrickMPS& BrickMPS::truncate_err(float maxerror) {
+// Truncate the MPS to a maximum truncation error and write the overlap
+// between the newly truncated MPS and the old one into ofile
+// Mostly used for testing to see if we truncate too much
+BrickMPS& BrickMPS::truncate_err(float maxerror, std::ofstream& ofile) {
   auto copyMPS = this->to_mps();
   auto otherCopyMPS = this->to_mps();
   println("Max link dim: before = " + std::to_string(maxLinkDim(copyMPS)));
   copyMPS.orthogonalize({"Cutoff", maxerror});
-  otherCopyMPS.orthogonalize();
-  println("overlap: " + std::to_string(norm(innerC(copyMPS, otherCopyMPS))));
-  println("norm before normalizing = " + std::to_string(norm(copyMPS)));
   copyMPS.normalize();
-  // println("norm of difference after truncation: " + std::to_string(norm(origMPS - copyMPS)));
+  otherCopyMPS.orthogonalize();
+  otherCopyMPS.normalize();
+
+  auto overlap = norm(innerC(copyMPS, otherCopyMPS));
+  ofile << "overlap" << std::endl << std::to_string(overlap) << std::endl;
+  println("overlap: " + std::to_string(overlap));
+
+  // println("norm before normalizing = " + std::to_string(norm(copyMPS)));
+  copyMPS.normalize();
+  // println("norm of difference after truncation: " + std::to_string(norm(copyMPS - otherCopyMPS)));
   println("Max link dim: after = " + std::to_string(maxLinkDim(copyMPS)));
   for (auto& ind : linkInds(copyMPS)) {
     // println(ind);
@@ -788,36 +841,57 @@ BrickMPS& BrickMPS::truncate_err(float maxerror) {
   return *this;
 }
 
-// do one iteration of the SEBD algorithm
-// 1. create a new MPS representing the new qudits
-// 2. randomize it
-// 3. glue it to the old MPS with random unitaries according to the architecture
-// 4. measure the old physical indices
+// same as truncate_err above but orthogonalizing to a maximum dimension instead
+BrickMPS& BrickMPS::truncate_maxdim(int maxdim, std::ofstream& ofile) {
+  auto copyMPS = this->to_mps();
+  auto otherCopyMPS = this->to_mps();
+  println("Max link dim: before = " + std::to_string(maxLinkDim(copyMPS)));
+  copyMPS.orthogonalize({"MaxDim", maxdim});
+  copyMPS.normalize();
+  otherCopyMPS.orthogonalize();
+  otherCopyMPS.normalize();
+
+  auto overlap = norm(innerC(copyMPS, otherCopyMPS));
+  ofile << "overlap" << std::endl << std::to_string(overlap) << std::endl;
+  println("overlap: " + std::to_string(overlap));
+
+  // println("norm before normalizing = " + std::to_string(norm(copyMPS)));
+  copyMPS.normalize();
+  // println("norm of difference after truncation: " + std::to_string(norm(copyMPS - otherCopyMPS)));
+  println("Max link dim: after = " + std::to_string(maxLinkDim(copyMPS)));
+  for (auto& ind : linkInds(copyMPS)) {
+    // println(ind);
+  }
+  for (int i = 1; i <= this->get_len(); i++) {
+    qudits[i] = copyMPS(i);
+  }
+  return *this;
+}
+
+// Do one iteration of the SEBD algorithm
+//  1. create a new MPS representing the new qudits
+//  2. randomize it
+//  3. glue it according to the architecture to the old MPS with random unitaries
+//  4. measure the old physical indices
+// iter: which iteration of the algorithm we're on (important for keeping track
+//       of where we are in the architecture, for gluing tensors together)
+// udata: the unitary gates of the circuit
+// circuit_type: 1 for brickwork, 2 for cluster state, 3 for more-entangling
+//               brickwork, 4 for less-entangling brickwork
+// orth_type: gets passed to measure()
 BrickMPS& BrickMPS::iterate(int iter, UnitaryData udata, int circuit_type, int orth_type) {
   int n = this->get_len();
   // 1. create a new MPS for the new qudits
-  BrickMPS newQudits = BrickMPS(std::to_string(iter), n, q, true);
-  auto newMPS = newQudits.to_mps();
-
-
-  // print all the qudit indices
-  // for (int pos = 1; pos <= n; pos++) {
-  //   println("----qudits[" + std::to_string(pos) + "]:");
-  //   for (auto& index : inds(qudits[pos])) {
-  //     println(index);
-  //   }
-  //   // PrintData(qudits[pos]);
-  //   println("norm=" + std::to_string(norm(qudits[pos])));
-  // }
+  BrickMPS* newQudits = new BrickMPS(std::to_string(iter), n, q, true);
+  auto newMPS = newQudits->to_mps();
+  delete newQudits;
 
   // 2. randomize it by applying random unitaries between each adjacent qudit pair
   for (int pos = 1; pos < n; pos++) {
     auto T1 = newMPS(pos);
     auto T2 = newMPS(pos + 1);
     auto combined = this->apply_unitary(T1, T2, udata[pos]);
-    // println("norm of post-unitary: " + std::to_string(norm(combined)));
-    // PrintData(combined);
-    // un-stick them by SVDing it
+    // un-stick the adjacent tensors by SVDing them
     // get the indices for the rows of the SVD
     Index site1 = siteIndex(newMPS, pos);
     ITensor U, A;
@@ -832,29 +906,12 @@ BrickMPS& BrickMPS::iterate(int iter, UnitaryData udata, int circuit_type, int o
       U = W;
     }
     newMPS.set(pos, U);
-    // println("norm of post-unitary U: " + std::to_string(norm(combined)));
-
     newMPS.set(pos + 1, A);
-    // println("norm of post-unitary A: " + std::to_string(norm(combined)));
-
-    // add the "bond=i" tag to the newly created index
+    // add the "bond=i" tag to the newly created index - optional?
     // rightLinkIndex(newMPS, pos).addTags("bond=" + pos);
 
   }
-  newMPS.orthogonalize();
-  // println(norm(newMPS));
-  // newMPS.normalize();
-
-
-  // for (int ipos = 1; ipos <= n; ipos++) {
-  //   println("----newMPS(" + std::to_string(ipos) + "):");
-  //   for (auto& index : inds(newMPS(ipos))) {
-  //     println(index);
-  //   }
-  //   println("norm=" + std::to_string(norm(newMPS(ipos))));
-  // }
-
-
+  newMPS.position(1);
 
   std::map<int, Index> inds_to_meas;
   std::map<int, Index> new_phys_inds;
@@ -866,6 +923,7 @@ BrickMPS& BrickMPS::iterate(int iter, UnitaryData udata, int circuit_type, int o
   // 1 means bricwork
   if (circuit_type == 1) {
     for (int pos = 1; pos <= n; pos++) {
+      // println("applying a unitary to pos " + std::to_string(pos));
       // keep track of which indices to measure and which to keep
       for (auto& ind : inds(qudits[pos])) {
         if (hasTags(ind, "Site")) inds_to_meas[pos] = ind;
@@ -958,21 +1016,8 @@ BrickMPS& BrickMPS::iterate(int iter, UnitaryData udata, int circuit_type, int o
   }
 
 
-
-  // // print all the qudit indices
-  // for (int pos = 1; pos <= n; pos++) {
-  //   println("----qudits[" + std::to_string(pos) + "]:");
-  //   for (auto& index : inds(qudits[pos])) {
-  //     println(index);
-  //   }
-  //   // PrintData(qudits[pos]);
-  //   println("norm=" + std::to_string(norm(qudits[pos])));
-  // }
-
-  // measure the indices
-
-  *this = this->measure2(inds_to_meas, new_phys_inds, orth_type);
-
+  // measure the old indices
+  *this = this->measure(inds_to_meas, new_phys_inds, orth_type);
 
   return *this;
 }

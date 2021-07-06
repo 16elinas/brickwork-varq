@@ -5,7 +5,8 @@ import sys
 qs = [2, 3, 4, 5, 6]
 ls = [18, 26]
 
-# plot avg entropy as a function of iteration
+# plot average and a few entropies in the center of the circuit_type
+# as a function of iteration
 ents_2d = []
 
 

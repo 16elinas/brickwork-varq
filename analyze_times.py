@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
+# Plot the times it takes to do an interation and truncation
 
 # filenames are tL1xL2_qq_out.txt
 # ls = [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]

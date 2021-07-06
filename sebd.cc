@@ -5,18 +5,26 @@
 using namespace itensor;
 using namespace std::chrono;
 
+/////////////////////////////////////////////////////////
+// Run the SEBD algorithm on an ITensor MPS representing
+// the qubits, using parameters from
+// the command line, and write the entanglement
+// data of the circuit to a file at each step
+////////////////////////////////////////////////////////
 int main(int argc, char *argv[]) {
+  // command-line arguments in order of how they should be entered
   int n = strtol(argv[1], NULL, 10); // length of MPS
   int m = strtol(argv[2], NULL, 10); // length of the other side of the circuit
   // m is also the number of iterations of SEBD
   int q = strtol(argv[3], NULL, 10); // local qudit dimension
+  int q2 = std::pow(q, 2);
   int method = strtol(argv[4], NULL, 10); // 1 for error, 2 for maxdim
   float err = atof(argv[5]); // maximum error allowed when truncating
   int maxdim = strtol(argv[6], NULL, 10);
-  std::string unitary_file = argv[7]; // where the random unitary gates are held
+  std::string unitary_file = argv[7]; // name of file where the random unitary gates are written
   std::string out_file = argv[8]; // where the entropies are written to
-  int circuit_type = strtol(argv[9], NULL, 10); // 1 for brickwork, 2 for cluster
-  int orth_type = strtol(argv[10], NULL, 10);
+  int circuit_type = strtol(argv[9], NULL, 10); // 1 for brickwork, 2 for cluster, 3 for more-entangling bw, 4 for less-entangling
+  int orth_type = strtol(argv[10], NULL, 10); // type of orthogonalization just before measurement
 
   UnitaryData udata;
 
@@ -39,14 +47,13 @@ int main(int argc, char *argv[]) {
   }
   ofile << std::endl;
 
+  std::cout << "q = " << q << std::endl;
+  std::cout << "method = " << method << std::endl;
+  std::cout << "cutoff error = " << err << std::endl;
+  std::cout << "maxdim = " << maxdim << std::endl;
 
   std::cout << "entanglement across middle: " << ent.entropies[(n / 2) - 1] << std::endl;
   auto sample_tensor = circuit.get_tensor(n / 2);
-
-  std::cout << "initial circuit: ";
-  for (int i = 1; i <= n; i++) {
-    // PrintData(circuit.get_tensor(i));
-  }
 
 
   std::ifstream myfile;
@@ -73,8 +80,8 @@ int main(int argc, char *argv[]) {
     // get unitary matrix from the file
     for (int p = 1; p <= num_gates; p++) {
         //std::cout << "Unitary Number: "<< p << std::endl;
-        for (int l2 = 0; l2 < std::pow(q, 2); l2++) {
-            for (int l = 0; l < std::pow(q, 2); l++) {
+        for (int l2 = 0; l2 < q2; l2++) {
+            for (int l = 0; l < q2; l++) {
                 std::getline(myfile,line,';');
                 std::istringstream is(line);
                 is >> c;
@@ -93,70 +100,23 @@ int main(int argc, char *argv[]) {
     end = steady_clock::now();
     it_time = duration_cast<duration<double>>(end - begin);
 
-    ent_prev = circuit.get_entanglement();
-    // println("singular values before truncation: ");
-    // std::cout << std::endl << "singular values in the middle: " << std::endl;
-    // for (int i = 0; i < ent_prev.svals[n/2].size(); i++) {
-    //   std::cout << ent_prev.svals[int(n / 2)][i] << ",";
-    //   // ofile << ent.entropies[i] << ",";
-    // }
-    // std::cout << std::endl;
-
     begin = steady_clock::now();
-    if (method == 1) {
-      circuit.truncate_err(err);
-    } else {
-      circuit.truncate_maxdim(maxdim);
-    }
+    circuit.truncate(err, maxdim, method, ofile);
     end = steady_clock::now();
     trunc_time = duration_cast<duration<double>>(end - begin);
 
-    // get and output the entanglement entropy
-    ent = circuit.get_entanglement();
-
-
-    println("entanglement entropies: ");
-    ofile << "entanglement entropies" << std::endl;
-    for (int i = 0; i < n - 1; i++) {
-      std::cout << ent.entropies[i] << " - ";
-      ofile << ent.entropies[i] << ",";
-    }
-    // sort the singular values
-    std::sort (ent.svals[int(n/2)].begin(), ent.svals[int(n/2)].end());
-    // println("singular values: ");
-    ofile << std::endl << "singular values in the middle: " << std::endl;
-    for (int i = 0; i < ent.svals[n/2].size(); i++) {
-      // std::cout << ent.svals[int(n / 2)][i] << ",";
-      ofile << ent.svals[int(n / 2)][i] << ",";
-      // ofile << ent.entropies[i] << ",";
-    }
-    std::cout << std::endl;
-    ofile << std::endl;
 
     //output the time it took to do everything:
     std::cout << "it time: " << it_time.count() << std::endl;
     std::cout << "truncation time: " << trunc_time.count() << std::endl;
     ofile << "it time: " << std::endl << it_time.count() << std::endl;
     ofile << "truncation time: " << std::endl << trunc_time.count() << std::endl;
-
-    ofile << "entanglement entropies before truncation" << std:: endl;
-    for (int i = 0; i < n - 1; i++) {
-      ofile << ent_prev.entropies[i] << ",";
-    }
-    // sort the singular values
-    std::sort (ent_prev.svals[int(n/2)].begin(), ent_prev.svals[int(n/2)].end());
-    // println("singular values: ");
-    ofile << std::endl << "singular values in the middle: " << std::endl;
-    for (int i = 0; i < ent_prev.svals[n/2].size(); i++) {
-      // std::cout << ent.svals[int(n / 2)][i] << ",";
-      ofile << ent_prev.svals[int(n / 2)][i] << ",";
-      // ofile << ent.entropies[i] << ",";
-    }
-    ofile << std::endl;
   }
 
   ofile.close();
   myfile.close();
+
+  delete &circuit;
 
   return 0;
 }
